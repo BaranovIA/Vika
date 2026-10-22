@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -39,21 +40,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 private val Green = Color(0xFF1B8A4B)
 private val GreenSoft = Color(0xFFD7F5E3)
 private val RedSoft = Color(0xFFFFDDE2)
 
+private fun formatTime(seconds: Int): String =
+    "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+
 @Composable
 fun QuizScreen(
     questions: List<Question>,
-    onFinish: (correct: Int, mistakes: List<Question>) -> Unit,
+    mode: Mode,
+    timeLimitSec: Int,
+    soundOn: Boolean,
+    speak: (String) -> Unit,
+    onFinish: (correct: Int, answered: Int, mistakes: List<Question>) -> Unit,
     onExit: () -> Unit
 ) {
+    val timed = mode == Mode.Timed
+    val auto = mode != Mode.Manual
+
     var index by remember { mutableIntStateOf(0) }
     var input by remember { mutableStateOf("") }
     var verdict by remember { mutableStateOf<Boolean?>(null) }
     var correct by remember { mutableIntStateOf(0) }
+    var answered by remember { mutableIntStateOf(0) }
+    var timeLeft by remember { mutableIntStateOf(timeLimitSec) }
+    var finished by remember { mutableStateOf(false) }
     val mistakes = remember { mutableStateListOf<Question>() }
 
     val q = questions[index]
@@ -61,20 +76,70 @@ fun QuizScreen(
 
     BackHandler(onBack = onExit)
 
+    fun finish() {
+        if (finished) return
+        finished = true
+        onFinish(correct, answered, mistakes.toList())
+    }
+
     fun check() {
-        if (input.isEmpty()) return
+        if (finished || verdict != null || input.isEmpty()) return
         val ok = input.toIntOrNull() == q.answer
         verdict = ok
+        answered++
         if (ok) correct++ else mistakes.add(q)
     }
 
     fun next() {
+        if (finished) return
         if (last) {
-            onFinish(correct, mistakes.toList())
+            finish()
         } else {
             index++
             input = ""
             verdict = null
+        }
+    }
+
+    // Озвучка вопроса.
+    LaunchedEffect(index) {
+        speak("${q.a} умножить на ${q.b}")
+    }
+
+    // Озвучка результата ответа (в режиме «На время» не озвучиваем, чтобы не тормозить).
+    LaunchedEffect(verdict) {
+        if (!timed) {
+            when (verdict) {
+                true -> speak("Верно!")
+                false -> speak("Неверно. ${q.a} умножить на ${q.b} равно ${q.answer}")
+                null -> {}
+            }
+        }
+    }
+
+    // Автоматический переход к следующему примеру.
+    LaunchedEffect(index, verdict) {
+        if (auto && verdict != null) {
+            val pauseMs = when {
+                timed && verdict == true -> 500L
+                timed -> 1500L
+                verdict == true -> 1100L
+                soundOn -> 3500L
+                else -> 2500L
+            }
+            delay(pauseMs)
+            next()
+        }
+    }
+
+    // Таймер для режима «На время».
+    LaunchedEffect(Unit) {
+        if (timed) {
+            while (timeLeft > 0 && !finished) {
+                delay(1000)
+                timeLeft--
+            }
+            finish()
         }
     }
 
@@ -85,15 +150,34 @@ fun QuizScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onExit) { Text("✕ Выйти", fontSize = 16.sp) }
+            if (soundOn) {
+                TextButton(onClick = { speak("${q.a} умножить на ${q.b}") }) {
+                    Text("🔊", fontSize = 20.sp)
+                }
+            }
             Spacer(Modifier.weight(1f))
-            Text(
-                "${index + 1} из ${questions.size}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            if (timed) {
+                Text(
+                    "Верно: $correct   ⏱ ${formatTime(timeLeft)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    "${index + 1} из ${questions.size}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
         LinearProgressIndicator(
-            progress = { (index + if (verdict != null) 1 else 0).toFloat() / questions.size },
+            progress = {
+                if (timed) {
+                    timeLeft.toFloat() / timeLimitSec
+                } else {
+                    (index + if (verdict != null) 1 else 0).toFloat() / questions.size
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(8.dp)
@@ -167,6 +251,10 @@ fun QuizScreen(
                 onDigit = { d ->
                     if (input.length < 3) {
                         input = if (input == "0") d else input + d
+                        // В режимах с автопереходом ответ проверяется, как только набрано нужное число цифр.
+                        if (auto && input.length == q.answer.toString().length) {
+                            check()
+                        }
                     }
                 },
                 onBackspace = { input = input.dropLast(1) },
@@ -253,7 +341,9 @@ private fun PadKey(
 
 @Composable
 fun ResultScreen(
+    timed: Boolean,
     correct: Int,
+    answered: Int,
     total: Int,
     mistakes: List<Question>,
     best: Int,
@@ -261,20 +351,40 @@ fun ResultScreen(
     onAgain: () -> Unit,
     onMenu: () -> Unit
 ) {
-    val pct = correct * 100 / total
-    val stars = when {
-        pct >= 90 -> 3
-        pct >= 70 -> 2
-        pct >= 40 -> 1
-        else -> 0
+    val pct = when {
+        timed && answered == 0 -> 0
+        timed -> correct * 100 / answered
+        else -> correct * 100 / total
+    }
+    val stars = if (timed) {
+        when {
+            correct >= 20 -> 3
+            correct >= 12 -> 2
+            correct >= 6 -> 1
+            else -> 0
+        }
+    } else {
+        when {
+            pct >= 90 -> 3
+            pct >= 70 -> 2
+            pct >= 40 -> 1
+            else -> 0
+        }
     }
     val title = when {
+        timed -> "Время вышло!"
         pct == 100 -> "Безупречно!"
         pct >= 90 -> "Великолепно!"
         pct >= 70 -> "Хорошо!"
         pct >= 40 -> "Неплохо!"
         else -> "Давай потренируемся ещё"
     }
+    val summary = if (timed) {
+        "Верно: $correct из $answered"
+    } else {
+        "Правильно: $correct из $total ($pct%)"
+    }
+    val bestText = if (timed) "Рекорд: $best" else "Лучший результат: $best%"
 
     BackHandler(onBack = onMenu)
 
@@ -301,10 +411,7 @@ fun ResultScreen(
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(8.dp))
-        Text(
-            "Правильно: $correct из $total ($pct%)",
-            style = MaterialTheme.typography.titleMedium
-        )
+        Text(summary, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         if (newRecord) {
             Text(
@@ -315,7 +422,7 @@ fun ResultScreen(
             )
         } else if (best >= 0) {
             Text(
-                "Лучший результат: $best%",
+                bestText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

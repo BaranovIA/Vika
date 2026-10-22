@@ -23,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,9 +43,13 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun MenuScreen(
     solved: Int,
+    bestTimed: Int,
+    soundOn: Boolean,
+    onToggleSound: () -> Unit,
     onLearn: () -> Unit,
     onSetup: () -> Unit,
-    onQuick: () -> Unit
+    onQuick: () -> Unit,
+    onTimed: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -53,7 +58,16 @@ fun MenuScreen(
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onToggleSound) {
+                Text(
+                    if (soundOn) "🔊 Звук: вкл" else "🔇 Звук: выкл",
+                    fontSize = 16.sp
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         Box(
             modifier = Modifier
                 .size(96.dp)
@@ -86,7 +100,23 @@ fun MenuScreen(
         Spacer(Modifier.height(12.dp))
         MenuCard("🎯", "Тренировка", "Выбери числа и количество примеров", onSetup)
         Spacer(Modifier.height(12.dp))
-        MenuCard("⚡", "Быстрый тест", "20 случайных примеров на всю таблицу", onQuick)
+        MenuCard(
+            "⚡",
+            "Быстрый тест",
+            "20 примеров на всю таблицу, переход к следующему автоматический",
+            onQuick
+        )
+        Spacer(Modifier.height(12.dp))
+        MenuCard(
+            "⏱",
+            "На время",
+            if (bestTimed >= 0) {
+                "$TIMED_SECONDS секунд: сколько успеешь? Рекорд: $bestTimed"
+            } else {
+                "$TIMED_SECONDS секунд: сколько успеешь решить?"
+            },
+            onTimed
+        )
 
         if (solved > 0) {
             Spacer(Modifier.height(24.dp))
@@ -194,11 +224,12 @@ fun LearnScreen(
 
 @Composable
 fun SetupScreen(
-    onStart: (Set<Int>, Int) -> Unit,
+    onStart: (Set<Int>, Int, Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     var selected by remember { mutableStateOf(setOf(2)) }
     var total by remember { mutableIntStateOf(10) }
+    var auto by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -247,9 +278,30 @@ fun SetupScreen(
             }
         }
 
+        Spacer(Modifier.height(20.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Автопереход",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Ответ проверяется сам, следующий пример открывается автоматически",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = auto, onCheckedChange = { auto = it })
+        }
+
         Spacer(Modifier.height(32.dp))
         Button(
-            onClick = { onStart(selected, total) },
+            onClick = { onStart(selected, total, auto) },
             enabled = selected.isNotEmpty(),
             modifier = Modifier
                 .fillMaxWidth()

@@ -5,12 +5,12 @@ import android.content.Context
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("trainer", Context.MODE_PRIVATE)
 
-    /** Лучший результат в процентах для режима или -1, если ещё не проходили. */
+    /** Лучший результат для режима (проценты или количество примеров) или -1, если ещё не проходили. */
     fun best(key: String): Int = sp.getInt("best_$key", -1)
 
-    fun saveBest(key: String, percent: Int) {
-        if (percent > best(key)) {
-            sp.edit().putInt("best_$key", percent).apply()
+    fun saveBest(key: String, score: Int) {
+        if (score > best(key)) {
+            sp.edit().putInt("best_$key", score).apply()
         }
     }
 
@@ -21,4 +21,11 @@ class Prefs(context: Context) {
             sp.edit().putInt("solved", totalSolved() + count).apply()
         }
     }
+
+    /** Включена ли озвучка. */
+    var soundOn: Boolean
+        get() = sp.getBoolean("sound", true)
+        set(value) {
+            sp.edit().putBoolean("sound", value).apply()
+        }
 }
