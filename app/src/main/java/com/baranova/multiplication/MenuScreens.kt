@@ -2,7 +2,9 @@
 
 package com.baranova.multiplication
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,15 +72,15 @@ fun MenuScreen(
             }
         }
         Spacer(Modifier.height(4.dp))
-        Box(
+        Image(
+            painter = painterResource(R.drawable.header_photo),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(96.dp)
+                .size(140.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("×", color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Bold)
-        }
+                .border(4.dp, MaterialTheme.colorScheme.primary, CircleShape)
+        )
         Spacer(Modifier.height(16.dp))
         Text(
             "Тренажёр",

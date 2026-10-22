@@ -68,6 +68,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App(prefs: Prefs, speaker: Speaker) {
+    var showSplash by remember { mutableStateOf(true) }
+    if (showSplash) {
+        SplashScreen(onDone = { showSplash = false })
+    } else {
+        MainContent(prefs, speaker)
+    }
+}
+
+@Composable
+private fun MainContent(prefs: Prefs, speaker: Speaker) {
     var screen by remember { mutableStateOf<Screen>(Screen.Menu) }
     var soundOn by remember { mutableStateOf(prefs.soundOn) }
 
